@@ -1,5 +1,9 @@
 # Living Agent Experiments
 
+PI = Perfectly Incomplete
+
+I pulled my left lat and had nothing to do.
+
 Living Agentで実際に行った観察・試行の公開記録。
 
 ここでは、後から話をきれいに作り直さない。
