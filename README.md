@@ -2,7 +2,7 @@
 
 PI = Perfectly Incomplete
 
-I pulled my left lat and had nothing to do.
+I started with a strain in my left let.
 
 Living Agentで実際に行った観察・試行の公開記録。
 
