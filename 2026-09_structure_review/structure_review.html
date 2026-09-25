@@ -21,6 +21,7 @@
   --low:#4F6470;
   --low-soft:#E1E8EC;
   --ok:#2E7A45;
+  --ok-soft:#DCEFE2;
   --lock:#E9E2F2;
   --lock-ink:#5B4A78;
   --display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
@@ -33,7 +34,7 @@
     --bg:#121816;--surface:#1A221F;--surface-2:#222C29;--ink:#E4ECE9;--ink-2:#A2B2AD;--line:#34423E;
     --accent:#62BFA5;--accent-soft:#1D3A33;--llm:#E0A558;--llm-soft:#3A2C19;
     --high:#EE7F7F;--high-soft:#3F2222;--mid:#E6B45A;--mid-soft:#3A301A;--low:#A5B8C4;--low-soft:#26313A;
-    --ok:#6FCB8B;--lock:#2A2436;--lock-ink:#C4B4E2;
+    --ok:#6FCB8B;--ok-soft:#1E3526;--lock:#2A2436;--lock-ink:#C4B4E2;
   }
 }
 :root[data-theme="dark"]{
@@ -41,7 +42,7 @@
   --bg:#121816;--surface:#1A221F;--surface-2:#222C29;--ink:#E4ECE9;--ink-2:#A2B2AD;--line:#34423E;
   --accent:#62BFA5;--accent-soft:#1D3A33;--llm:#E0A558;--llm-soft:#3A2C19;
   --high:#EE7F7F;--high-soft:#3F2222;--mid:#E6B45A;--mid-soft:#3A301A;--low:#A5B8C4;--low-soft:#26313A;
-  --ok:#6FCB8B;--lock:#2A2436;--lock-ink:#C4B4E2;
+  --ok:#6FCB8B;--ok-soft:#1E3526;--lock:#2A2436;--lock-ink:#C4B4E2;
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.75;padding-inline:16px;padding-block:32px 64px}
@@ -116,6 +117,11 @@ tr:last-child td{border-bottom:none}
 td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;max-width:820px}
 .note{font-size:13px;color:var(--ink-2)}
+.st{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.st.done{background:var(--ok-soft);color:var(--ok)}
+.st.part{background:var(--mid-soft);color:var(--mid)}
+.st.open,.st.worse{background:var(--high-soft);color:var(--high)}
+.callout{border-left:3px solid var(--line);padding:6px 12px;color:var(--ink-2);font-size:13.5px;max-width:820px}
 @media (max-width:560px){h1{font-size:26px}.fbody dl{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -126,23 +132,50 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
   <div class="eyebrow">ISUKA-SSP / LIVING_AGENT · コードレビュー</div>
   <h1>Living Agent 構造レビュー</h1>
   <div class="meta">
-    <span>ブランチ <code>claude/modest-hopper-pjj8qg</code></span>
-    <span>コミット <code>83e129e</code>(2026-09-15)</span>
+    <span>対象 <code>experiments</code> ブランチ <code>5bfd74c</code>(2026-09-24)</span>
+    <span>初版 <code>83e129e</code>(2026-09-15)</span>
     <span>確認日 2026-09-25</span>
   </div>
-  <p class="lead">ステラとシリカの2人の住人(PI)が、ユーザーとの会話・住人同士の会話・自分のMemoryの観測を通じて経験を積むCLIアプリです。世界で起きた事実と、住人それぞれが主観的に受け取った観測をはっきり分ける設計が軸になっています。このページでは、実行時に使われる構造の図と、読んで気づいた問題点をまとめています。</p>
+  <p class="lead">ステラとシリカの2人の住人(PI)が、外部からの発話・住人同士の会話・自分のMemoryの観測・RSS記事の読書を通じて経験を積むCLIアプリです。世界で起きた事実と、住人それぞれが主観的に受け取った観測をはっきり分ける設計が軸になっています。このページでは、実行時に使われる構造の図と、読んで気づいた問題点をまとめています。初版(83e129e)の指摘を 5bfd74c で見直し、解消したものと残っているものを分けました。</p>
 </header>
 
 <div class="facts">
-  <div class="fact"><b>473</b><span>リポジトリ内の .py ファイル(約5.2万行)</span></div>
-  <div class="fact"><b>57</b><span>main.py から実際に import されるモジュール</span></div>
-  <div class="fact"><b>264 / 14</b><span>ルート直下のテストの成功 / 失敗件数</span></div>
-  <div class="fact"><b>約5〜6回</b><span>ユーザー発話1回あたり、住人1人が呼ぶGemini API</span></div>
+  <div class="fact"><b>301</b><span>ルート直下の .py ファイル(初版 264)</span></div>
+  <div class="fact"><b>74</b><span>main.py から実際に import されるモジュール(初版 57)</span></div>
+  <div class="fact"><b>390 / 2</b><span>ルート直下のテストの成功 / 失敗(初版 264 / 14)</span></div>
+  <div class="fact"><b>6.6秒</b><span>Memory 5000件・入力80文字の Recall 1回(初版 4.4秒)</span></div>
 </div>
+
+<section id="recheck">
+  <h2>5bfd74c での再確認</h2>
+  <p class="prose">初版(83e129e)からの18コミットを確認し、各指摘が解消したかを見直しました。</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>初版の指摘</th><th>状態</th><th>5bfd74c で確認したこと</th></tr></thead>
+    <tbody>
+      <tr><td>Gemini APIの失敗でCLI全体が落ちる</td><td><span class="st done">解消</span></td><td>外部入力は別スレッドの <code>process_external_input</code> で処理され、例外は [システム] 表示で止まる(main.py:798-815)。429/503/504 は段階ごとに最大3回まで試行。失敗時は受け取った発話だけを記録し、生成は捨てる方針が明示された。</td></tr>
+      <tr><td>WAIT同士の NoReply の往復が止まらない</td><td><span class="st open">残る</span></td><td><code>conversation_continuation.py</code> は変更なし。</td></tr>
+      <tr><td>LLMなしの構成では住人が発言しない</td><td><span class="st part">一部解消</span></td><td>テストは専用の <code>DirectReplyDecisionGenerator</code> に差し替えて通るようになった。<code>RuleBasedDecisionGenerator</code> 自体は今も WAIT を返す。行動選択プロンプトに想起が入らない点も同じ。</td></tr>
+      <tr><td>Recall の計算量が大きい</td><td><span class="st worse">残る(悪化)</span></td><td>方式は同じ。Memory 1件ごとに他者認知を SQLite から読むようになり、4.4秒 → 6.6秒。</td></tr>
+      <tr><td>TALK競合は生成が先に終わった方が勝つ</td><td><span class="st open">残る</span></td><td>勝敗の決め方は同じ(event_dispatcher.py:287-350)。</td></tr>
+      <tr><td>容量整理がロックを持ったまま長時間走る</td><td><span class="st open">残る</span></td><td><code>memory_capacity_scheduler.py</code> は変更なし。</td></tr>
+      <tr><td>Lossy置換後のMemoryや自分の発話がRecallされない</td><td><span class="st open">残る</span></td><td>外部発話とRSS記事には recall metadata が付くようになったが、Lossy置換・自分の発話・Thought には付かない。</td></tr>
+      <tr><td>OTHER が "other" の文字列のまま保存される</td><td><span class="st done">解消</span></td><td>候補を実IDの一覧で提示して解決する。一意に決まらなければ例外。</td></tr>
+      <tr><td>プロンプトの【現在の出来事】が内部ID表示</td><td><span class="st done">解消</span></td><td><code>PerceptionRenderer</code> が観測者ごとの既知名で表示する。</td></tr>
+      <tr><td>想定外ラベルの扱いが WAIT と例外でそろっていない</td><td><span class="st open">残る</span></td><td>行動ラベルは WAIT、発言相手ラベルは例外のまま。</td></tr>
+      <tr><td><code>last_resident_speaker_id</code> が読まれていない</td><td><span class="st open">残る</span></td><td>main.py:249, 455-462。</td></tr>
+      <tr><td><code>ApiActivityStore</code> の上書きが一時ファイル経由でない</td><td><span class="st open">残る</span></td><td>変更なし。</td></tr>
+      <tr><td>初版で失敗していたテスト14件</td><td><span class="st done">解消</span></td><td>14件すべて通る。新たに2件が失敗。</td></tr>
+      <tr><td><code>20260822/</code> によるテスト収集の衝突、requirements 不在</td><td><span class="st open">残る</span></td><td>ルートで <code>pytest</code> を実行すると収集エラー108件。</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
 
 <section id="architecture">
   <h2>アーキテクチャ図</h2>
   <p class="prose">実行時の構造です(main.py から到達できる57モジュールが対象。実験用コードは含みません)。入口が3つあり、どれも同じロックで1ターンずつ直列化されてから World層に入ります。茶色の枠と「LLM」の印は Gemini API を呼ぶ箇所です。</p>
+  <p class="callout">この節から「良いところ」までは初版(83e129e)時点の構造です。5bfd74c で追加された他者認知(entity_perception_*、PerceptionRenderer)、外部発話の解釈Memory、RSS読書(READ_RSS と読書後の振り返り)、APIの再試行と呼び出し上限(10秒20回)は図に入っていません。</p>
   <div class="diagram">
   <svg viewBox="0 0 1120 850" role="img" aria-label="Living Agentの実行時アーキテクチャ図">
     <defs>
@@ -335,21 +368,9 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
 </section>
 
 <section id="findings">
-  <h2>指摘事項</h2>
-  <p class="prose note">重要度の目安は、高=動作が止まる・意図しない挙動が続く、中=性能や設計上のリスク、低=整理すると読みやすくなる、です。項目を開くと詳細が見られます。</p>
+  <h2>残っている指摘</h2>
+  <p class="prose note">重要度の目安は、高=意図しない挙動が続く、中=性能や設計上のリスク、低=整理すると読みやすくなる、です。行番号は 5bfd74c のものです。項目を開くと詳細が見られます。</p>
   <div class="findings">
-
-    <details class="f" data-sev="high" open>
-      <summary><span class="sev">高</span><span class="ftitle">通常の発話でGemini APIが失敗すると、CLI全体が落ちる</span></summary>
-      <div class="fbody">
-        <div class="where">main.py:722-737 · event_dispatcher.py:79</div>
-        <dl>
-          <dt>起きること</dt><dd><code>/pass</code> と <code>/observe-memory</code> は try/except で囲まれていますが、通常の発話経路の <code>dispatcher.dispatch(event)</code> は囲まれていません。TALK本文の生成失敗だけは Dispatcher 内で握りつぶされますが、Expectation Field・Thought・Decision・記憶要約(JSON解析失敗を含む)で例外が出ると、そのままメインループを抜けてプロセスが終了します。</dd>
-          <dt>影響</dt><dd>一時的なAPIエラー1回でセッションが終わる。ユーザー発話は WorldState には publish 済みなのに Memory には一部しか保存されない、という中途半端な状態も起こりえます。</dd>
-          <dt>提案</dt><dd>他のコマンドと同じく try/except で囲み、エラーを表示して入力に戻す。あわせて <code>GeminiTextGenerator</code> に短いリトライ(429や5xxに対して2〜3回)を入れる。</dd>
-        </dl>
-      </div>
-    </details>
 
     <details class="f" data-sev="high" open>
       <summary><span class="sev">高</span><span class="ftitle">お互いにWAITを選び続けると、NoReplyの往復が止まらない</span></summary>
@@ -357,32 +378,32 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
         <div class="where">conversation_continuation.py:86-108</div>
         <dl>
           <dt>起きること</dt><dd>AがWAITを選ぶとBに NoReplyEvent が渡り、BもWAITを選ぶと今度はAに NoReplyEvent が渡ります。この往復に終了条件がないため、アプリを起動している限り45秒ごとに続きます。</dd>
-          <dt>影響</dt><dd>1往復ごとに Gemini 呼び出しが約3回(Expectation Field・Thought・Decision)、Memory が3件(NoReply・Thought・Decision)増えます。1時間放置すると約240回の呼び出しと約240件の Memory になり、容量上限5000件の半分に約10時間で達する計算です。</dd>
-          <dt>提案</dt><dd>「生きている」表現として意図的なら、連続WAIT回数による打ち切りか、間隔を倍々に伸ばす仕組みを入れる。意図していないなら、NoReplyに対するWAITでは継続を作らない。CHECK_TIME の後は待ち時間0秒で継続するので、CHECK_TIME を繰り返し選んだ場合も同様に高速なループになりえます。</dd>
+          <dt>影響</dt><dd>1往復ごとに Gemini 呼び出しが約3回(Expectation Field・Thought・Decision)、Memory が3件(NoReply・Thought・Decision)増えます。1時間放置すると約240回の呼び出しと約240件の Memory になり、容量上限5000件の半分に約10時間で達する計算です。新しく入った呼び出し上限(10秒20回)は、この程度の頻度では効きません。</dd>
+          <dt>提案</dt><dd>「生きている」表現として意図的なら、連続WAIT回数による打ち切りか、間隔を倍々に伸ばす仕組みを入れる。意図していないなら、NoReplyに対するWAITでは継続を作らない。CHECK_TIME の後は待ち時間0秒で継続するので(conversation_continuation_scheduler.py:55)、CHECK_TIME を繰り返し選んだ場合も同様に高速なループになりえます。</dd>
         </dl>
       </div>
     </details>
 
-    <details class="f" data-sev="high">
-      <summary><span class="sev">高</span><span class="ftitle">LLMなしの構成では住人が一切発言しなくなっている</span></summary>
+    <details class="f" data-sev="mid" open>
+      <summary><span class="sev">中</span><span class="ftitle">Recallの計算量が大きく、5bfd74c でさらに遅くなった</span></summary>
       <div class="fbody">
-        <div class="where">context_builder.py:91 · rule_based_decision_generator.py:27, 42</div>
+        <div class="where">memory_recall_service.py:46-60, 101 · perception_renderer.py:107-119</div>
         <dl>
-          <dt>起きること</dt><dd><code>ContextBuilder</code> が常に <code>available_action_types=(TALK, WAIT, CHECK_TIME)</code> を設定するようになったため、<code>RuleBasedDecisionGenerator</code> は必ず <code>_choose_available_action</code> に進みます。text_generator がないとそこで必ず WAIT を返すので、<code>integration_test_runner.py</code>(LLMを使わない動作確認)では住人が発言しません。<code>test_integration_test_runner</code> と <code>test_living_loop</code> の失敗はこれが原因です。</dd>
-          <dt>もう一つの変化</dt><dd>同じ理由で <code>_choose_talk_or_wait</code> は通常経路から到達できなくなりました。以前はこの判断プロンプトに「思い出した経験」と「経験全体から感じられる傾向」が入っていましたが、現在の行動選択プロンプトには入っていません。意図した変更かどうか確認したいところです。</dd>
-          <dt>提案</dt><dd>text_generator がないときは TALK を既定にする(以前の挙動)。行動選択プロンプトに想起とExpectation Fieldを戻すかどうかは、設計として判断する。</dd>
+          <dt>起きること</dt><dd><code>_common_text_score</code> は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ <code>in</code> 検索します(おおよそ 入力長² × Memory件数)。5bfd74c からは、その前に Memory 1件ごとに <code>recall_search_text</code> が他者認知を取りに行き、そのたびに SQLite の接続を開いています。</dd>
+          <dt>実測</dt><dd>Memory 5000件・入力80文字で、83e129e は <b>4.4秒</b>、5bfd74c は <b>6.6秒</b>(main.py と同じく renderer ありの構成)。応答する住人ごとに実行され、ロックを持ったまま走るため、その間は他の処理も待たされます。</dd>
+          <dt>提案</dt><dd>他者認知は Recall 1回につき観測者ごとに1度だけ読んで辞書で引く。文字列一致は Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数で近似する、入力長に上限を設ける、など。</dd>
         </dl>
       </div>
     </details>
 
     <details class="f" data-sev="mid">
-      <summary><span class="sev">中</span><span class="ftitle">Recallの計算量が大きく、Memoryが増えると応答が遅くなる</span></summary>
+      <summary><span class="sev">中</span><span class="ftitle">LLMなしの Decision は今も WAIT になり、行動選択に想起が入らない</span></summary>
       <div class="fbody">
-        <div class="where">memory_recall_service.py:93-150</div>
+        <div class="where">context_builder.py:100 · rule_based_decision_generator.py:29, 44, 263</div>
         <dl>
-          <dt>起きること</dt><dd><code>_common_text_score</code> は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ <code>in</code> 検索します。入力長をL、Memory件数をNとすると、おおよそ L²×N 回の文字列検索です。</dd>
-          <dt>実測</dt><dd>Memory 5000件、入力80文字で1回の Recall に <b>4.4秒</b>かかりました。応答する住人ごとに実行され、しかもロックを持ったまま走るため、その間はユーザー入力も待たされます。住人同士の長い発話が入力になると、さらに伸びます。</dd>
-          <dt>提案</dt><dd>Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数でスコアを近似する、入力長に上限を設ける、recall_keys による絞り込みを先に行う、などで大きく短縮できます。</dd>
+          <dt>起きること</dt><dd><code>ContextBuilder</code> が常に選べる行動を渡すため、<code>RuleBasedDecisionGenerator</code> は text_generator がないと必ず WAIT を返します。テストは専用の <code>DirectReplyDecisionGenerator</code> に差し替えて通しているので、<code>RuleBasedDecisionGenerator</code> のLLMなし経路を確認するテストはなくなりました。</dd>
+          <dt>もう一つの点</dt><dd><code>_choose_talk_or_wait</code>(想起とExpectation Fieldを判断プロンプトに入れていた経路)は通常経路から到達できないままです。意図した変更かどうか確認したいところです。</dd>
+          <dt>提案</dt><dd>使わないなら <code>_choose_talk_or_wait</code> とLLMなしの分岐を削除する。使うなら text_generator がないときの既定を TALK に戻す。</dd>
         </dl>
       </div>
     </details>
@@ -390,9 +411,9 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
     <details class="f" data-sev="mid">
       <summary><span class="sev">中</span><span class="ftitle">TALKの競合で「生成が先に終わった方」が勝ち、負けた側はそれを知らない</span></summary>
       <div class="fbody">
-        <div class="where">event_dispatcher.py:291-316</div>
+        <div class="where">event_dispatcher.py:287-350</div>
         <dl>
-          <dt>起きること</dt><dd>2人ともTALKを選んだ場合、<code>as_completed</code> の順で最初に返ってきた発話だけが成立します。勝敗はAPIの応答速度で決まります。負けた側の Thought と「発言する」という Decision は Memory に残りますが、自分の発言が成立しなかったという観測は残りません。</dd>
+          <dt>起きること</dt><dd>2人ともTALKを選んだ場合、<code>as_completed</code> の順で最初に返ってきた発話だけが成立します。勝敗はAPIの応答速度で決まります。再試行が入ったことで、一方が再試行待ちになると、もう一方がほぼ確実に勝ちます。負けた側の Thought と「発言する」という Decision は Memory に残りますが、自分の発言が成立しなかったという観測は残りません。</dd>
           <dt>提案</dt><dd>勝敗の決め方(宛先を優先する、交互にするなど)を明示的なルールにする。負けた側には「話そうとしたが相手が先に話した」ことが観測として残るようにするか、少なくとも Decision を記録しないようにする。</dd>
         </dl>
       </div>
@@ -401,9 +422,9 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
     <details class="f" data-sev="mid">
       <summary><span class="sev">中</span><span class="ftitle">容量整理のループがロックを持ったまま長時間走ることがある</span></summary>
       <div class="fbody">
-        <div class="where">memory_capacity_scheduler.py:121-219</div>
+        <div class="where">memory_capacity_scheduler.py:120-219</div>
         <dl>
-          <dt>起きること</dt><dd><code>_fire_inner</code> は実行ロックを取ったまま、期限が来た住人を順番に処理します。1人あたり Thought・Decision・置換文・整理後メッセージなど複数回のLLM呼び出しがあるため、その間にユーザーが入力しても何も表示されずに待たされます。</dd>
+          <dt>起きること</dt><dd><code>_fire_inner</code> は実行ロックを取ったまま、期限が来た住人を順番に処理します。1人あたり複数回のLLM呼び出しがあり、5bfd74c からは各呼び出しが再試行で通常20秒ほど(429 で Retry-After があれば最大120秒ずつ)待つことがあります。外部入力は別スレッドになったので入力欄は固まりませんが、応答はロックが空くまで出ません。</dd>
           <dt>提案</dt><dd>1回の発火では1人だけ処理して次のタイマーに回す。処理中であることを CLI に一行出す。</dd>
         </dl>
       </div>
@@ -412,10 +433,10 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
     <details class="f" data-sev="mid">
       <summary><span class="sev">中</span><span class="ftitle">Lossy置換後のMemoryや自分の発話は、検索型Recallに一度も出てこない</span></summary>
       <div class="fbody">
-        <div class="where">memory_recall_service.py:43 · memory_recorder.py:83</div>
+        <div class="where">memory_recall_service.py:46 · memory_recorder.py:161</div>
         <dl>
-          <dt>起きること</dt><dd>Recall は <code>recall_text</code> を持つ Memory だけを対象にしますが、recall_text が作られるのは他者の発話だけです。自分の発言・Thought・Lossy置換で残した Memory は、直近10件に入っている間しか思い出せません。</dd>
-          <dt>確認したいこと</dt><dd>「自分で整理して残したMemoryほど思い出せない」という結果になっているので、設計として意図したものかを確認したいです。意図していないなら、Lossy置換時に <code>MemorySummarizer.summarize_as_single_memory</code> で recall metadata を付けられます(Representation 用に作られたもので、現在は main.py からは使われていない <code>memory_representation_metadata_service.py</code> が呼んでいます)。</dd>
+          <dt>起きること</dt><dd>Recall は <code>recall_text</code> を持つ Memory だけを対象にします。5bfd74c で外部発話(解釈Memory)とRSS記事にも recall metadata が付くようになりましたが、自分の発言・Thought・Lossy置換で残した Memory には今も付かず、直近10件に入っている間しか思い出せません。</dd>
+          <dt>確認したいこと</dt><dd>「自分で整理して残したMemoryほど思い出せない」という結果になっているので、設計として意図したものかを確認したいです。意図していないなら、Lossy置換時に <code>MemorySummarizer.summarize_as_single_memory</code>(外部発話とRSSで既に使われている)で recall metadata を付けられます。</dd>
         </dl>
       </div>
     </details>
@@ -424,10 +445,8 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
       <summary><span class="sev">低</span><span class="ftitle">細かい不整合</span></summary>
       <div class="fbody">
         <ul class="good">
-          <li>TALKの相手に OTHER を選ぶと <code>recipient_id="other"</code> という文字列のまま保存される(<span class="where">rule_based_decision_generator.py:122</span>)。住人が2人のうちは困らないが、3人以上になると意味が曖昧になる。</li>
-          <li>返答プロンプトの【現在の出来事】は <code>user -&gt; stella: …</code> のように内部IDで表示される一方、Memory は「ユーザーが…」と表示名で書かれている(<span class="where">prompt_builder.py:159</span>)。</li>
-          <li>行動ラベルが想定外のときは黙って WAIT になるが、発言相手のラベルが想定外のときは例外になる。扱いがそろっていない。</li>
-          <li><code>last_resident_speaker_id</code> は更新されるだけで、どこからも読まれていない(<span class="where">main.py:190, 296-304</span>)。</li>
+          <li>行動ラベルが想定外のときは黙って WAIT になるが、発言相手のラベルが想定外のときは例外になる(<span class="where">rule_based_decision_generator.py:162</span>)。扱いがそろっていない。</li>
+          <li><code>last_resident_speaker_id</code> は更新されるだけで、どこからも読まれていない(<span class="where">main.py:249, 455-462</span>)。</li>
           <li><code>ApiActivityStore.record_request</code> は並列TALKの複数スレッドから同じJSONを直接上書きする。他のストアのように一時ファイル経由で置き換えるほうが安全(<span class="where">api_activity_store.py:20</span>)。</li>
         </ul>
       </div>
@@ -436,43 +455,47 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
   </div>
 </section>
 
+<section id="resolved">
+  <h2>解消した指摘</h2>
+  <ul class="good">
+    <li><b>Gemini APIの失敗でCLI全体が落ちる。</b>外部入力の処理が <code>process_external_input</code>(main.py:798)に移り、例外は [システム] 表示で止まります。429/503/504 は <code>ApiRetryPolicy</code> で段階ごとに最大3回まで試行し(間隔は5秒・15秒)、新しい入力が来たら待機中の再試行を取り消します。失敗時は受け取った発話だけを Memory に残す方針が明示されました。</li>
+    <li><b>TALKの相手 OTHER が "other" のまま保存される。</b>発言相手の候補を実IDの一覧として提示するようになりました。</li>
+    <li><b>プロンプトの【現在の出来事】が内部ID表示。</b>観測者ごとの既知名で表示されるようになりました。</li>
+    <li><b>初版で失敗していたテスト14件。</b>すべて通ります。</li>
+  </ul>
+</section>
+
 <section id="tests">
   <h2>テストの状況</h2>
-  <p class="prose">requirements.txt も pyproject.toml もないため、pytest と google-genai を入れてから実行しました。リポジトリのルートで <code>pytest</code> をそのまま実行すると、<code>20260822/</code> にある同名モジュールのコピーと衝突して、収集の時点で100件のエラーになります。ルート直下の <code>test_*.py</code> だけを指定して実行した結果は次のとおりです。</p>
+  <p class="prose">requirements.txt も pyproject.toml もないため、pytest と google-genai を入れてから実行しました。ルートで <code>pytest</code> をそのまま実行すると、<code>20260822/</code> にある同名モジュールのコピーと衝突して、収集の時点で108件のエラーになります(初版時は100件)。ルート直下の <code>test_*.py</code> だけを指定した結果は <b>390件成功・2件失敗</b>です。</p>
   <div class="tablewrap">
   <table>
-    <thead><tr><th>原因</th><th>失敗したテスト</th><th>件数</th></tr></thead>
+    <thead><tr><th>失敗したテスト</th><th>原因</th></tr></thead>
     <tbody>
-      <tr><td>LLMなしだとWAITしか選ばない(上の指摘)</td><td>test_integration_test_runner, test_living_loop</td><td class="n">2</td></tr>
-      <tr><td>テスト用のダミー生成器に <code>generate_json</code> がない</td><td>test_memory_expectation_recent_model</td><td class="n">5</td></tr>
-      <tr><td>テストが <code>Decision.action_type</code> に文字列を渡している</td><td>test_response_generator</td><td class="n">3</td></tr>
-      <tr><td>ダミーの ResponsePolicy が <code>perception</code> 引数を受け取らない</td><td>test_event_dispatcher</td><td class="n">1</td></tr>
-      <tr><td>削除された <code>update_recall_text</code> を呼んでいる</td><td>test_memory_repository</td><td class="n">1</td></tr>
-      <tr><td>知覚を通すようになり source_event が同一オブジェクトでなくなった</td><td>test_memory_persistence</td><td class="n">1</td></tr>
-      <tr><td>想起Memoryのプロンプト表示形式が変わった</td><td>test_prompt_builder</td><td class="n">1</td></tr>
+      <tr><td><code>test_api_request_limiter.py</code><br>test_limit_applies_to_all_generators_before_network_request</td><td>a09c3be で <code>GeminiTextGenerator.generate</code> が上限超過の例外を <code>RuntimeError</code> で包むようになったのに、テストは <code>ApiRequestLimitExceeded</code> がそのまま出ることを期待している。実行時の表示は原因の連鎖をたどるので問題ない。テストの更新漏れ。</td></tr>
+      <tr><td><code>test_external_followup.py</code><br>test_failed_first_input_is_not_a_followup_after_retry</td><td>「生成に失敗した外部入力は Memory に残さない」ことを期待している。a09c3be で「失敗しても受け取った原文は残す」方針に変わったため、テストが古い方針のままになっている。どちらの方針にするか決めてテストをそろえる必要がある。</td></tr>
     </tbody>
   </table>
   </div>
-  <p class="prose note">14件中12件は、本体の変更にテストが追従していないだけです。本当の不具合を示しているのは最初の2件です。</p>
+  <p class="prose note">どちらも単独で実行しても失敗するので、実行順による不安定さではありません。</p>
 </section>
 
 <section id="structure">
   <h2>リポジトリの構成</h2>
   <div class="prose" style="display:flex;flex-direction:column;gap:12px">
-    <p>473個の .py ファイルがすべてルートに並んでいて、そのうち実行時に使われるのは57モジュールです。残りは実験スクリプト(<code>*_experiment.py</code>)、スモークテスト、ユニットテスト、そして main.py から使われていない Knowledge 系・Reflection 系・予測系のモジュールです。</p>
-    <p>さらに <code>20260822/</code> に本体一式のコピー(210ファイル)、<code>archive/</code> に実験ごとのzip(約11MB)が git 管理下にあります。どれが現行コードかがファイル一覧から分かりにくく、上のようにテスト収集も壊れます。</p>
-    <p><code>main.py</code>(741行)は、組み立て・グローバル状態(容量整理セッションなど)・コマンド処理・スケジューラのハンドラを1ファイルに持っていて、テストしにくい形になっています。</p>
+    <p>ルート直下の .py は301個に増え、main.py から使われるのは74モジュールです。<code>main.py</code> は970行になり、組み立て・グローバル状態・コマンド処理・スケジューラのハンドラ・外部入力スレッドを1ファイルに持っています。<code>20260822/</code>(本体のコピー)と <code>archive/</code>(実験zip)も git 管理下に残っています。設計メモ(<code>CURRENT_DESIGN_REVIEW.md</code>、<code>RSS_STAGE1〜4.md</code>)もルートに増えました。</p>
+    <p><code>CURRENT_DESIGN_REVIEW.md</code> には「API エラーの自動再試行は追加していない」とありますが、その後の a09c3be で再試行が入っているので、記述が古くなっています。</p>
   </div>
 </section>
 
 <section id="next">
   <h2>次にやるとよいこと</h2>
   <ol class="next">
-    <li>通常発話の経路を try/except で囲み、Gemini 呼び出しに短いリトライを入れる(数行で済み、効果が大きい)。</li>
     <li>WAIT同士の NoReply の往復に止まる条件を入れる。</li>
-    <li>LLMなしのときの Decision を TALK に戻し、失敗しているテスト12件を現在のインターフェースに合わせる。<code>requirements.txt</code> と、<code>testpaths</code> を指定した <code>pytest.ini</code> を追加する。</li>
-    <li>実行時コード・実験・テスト・スナップショットをディレクトリで分ける。たとえば <code>living_agent/</code>(world・cognition・memory・llm)、<code>experiments/</code>、<code>tests/</code> に分け、<code>20260822/</code> と <code>archive/</code> は git のタグか外部ストレージに移す。</li>
-    <li>Recall をn-gram索引で高速化する。Memory が数千件に近づく前にやっておくと安心です。</li>
+    <li>Recall で他者認知を1回だけ読むようにする(接続を毎回開くコストがなくなるので、4.4秒 → 6.6秒 の悪化の多くは戻せる見込み)。その後、n-gram索引で文字列一致自体を速くする。</li>
+    <li>失敗しているテスト2件を現在の方針に合わせる。<code>requirements.txt</code> と、<code>testpaths</code> を指定した <code>pytest.ini</code> を追加する。</li>
+    <li><code>RuleBasedDecisionGenerator</code> のLLMなし分岐と <code>_choose_talk_or_wait</code> を、使うか削除するか決める。</li>
+    <li>実行時コード・実験・テスト・スナップショットをディレクトリで分け、<code>20260822/</code> と <code>archive/</code> は git のタグか外部ストレージに移す。</li>
     <li>TALK競合の勝敗ルールと、Lossy置換後の Memory を思い出せるようにするかどうかを、設計として決める。</li>
   </ol>
 </section>

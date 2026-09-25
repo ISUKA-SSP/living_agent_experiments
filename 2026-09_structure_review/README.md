@@ -1,19 +1,44 @@
 # Living Agent 構造レビュー
 
-- 対象: `living_agent` ブランチ `claude/modest-hopper-pjj8qg`、コミット `83e129e`(2026-09-15)
+- 対象: `living_agent` の `experiments` ブランチ、コミット `5bfd74c`(2026-09-24)
+- 初版の対象: ブランチ `claude/modest-hopper-pjj8qg`、コミット `83e129e`(2026-09-15)
 - 確認日: 2026-09-25
 - 同じ内容のHTML版: [structure_review.html](./structure_review.html)(ダウンロードしてブラウザで開くと図が見やすい)
 
-ステラとシリカの2人の住人(PI)が、ユーザーとの会話・住人同士の会話・自分のMemoryの観測を通じて経験を積むCLIアプリ。世界で起きた事実と、住人それぞれが主観的に受け取った観測をはっきり分ける設計が軸になっている。
+ステラとシリカの2人の住人(PI)が、外部からの発話・住人同士の会話・自分のMemoryの観測・RSS記事の読書を通じて経験を積むCLIアプリ。世界で起きた事実と、住人それぞれが主観的に受け取った観測をはっきり分ける設計が軸になっている。
 
-| 項目 | 値 |
-| --- | --- |
-| リポジトリ内の `.py` ファイル | 473(約5.2万行) |
-| `main.py` から実際に import されるモジュール | 57 |
-| ルート直下のテスト | 264件成功 / 14件失敗 |
-| ユーザー発話1回あたり、住人1人が呼ぶGemini API | 約5〜6回 |
+| 項目 | 83e129e | 5bfd74c |
+| --- | ---: | ---: |
+| ルート直下の `.py` ファイル | 264 | 301 |
+| `.py` ファイル総数(`20260822/` を含む) | 473 | 510 |
+| `main.py` から実際に import されるモジュール | 57 | 74 |
+| ルート直下のテスト(成功 / 失敗) | 264 / 14 | 390 / 2 |
+| Memory 5000件・入力80文字での Recall 1回 | 4.4秒 | 6.6秒 |
+
+## 5bfd74c での再確認
+
+初版(`83e129e`)からの18コミットを確認し、各指摘が解消したかを見直した。
+
+| 初版の指摘 | 状態 | 5bfd74c で確認したこと |
+| --- | --- | --- |
+| Gemini APIの失敗でCLI全体が落ちる | 解消 | 外部入力は別スレッドの `process_external_input` で処理され、例外は `[システム]` 表示で止まる(`main.py:798-815`)。429/503/504 は段階ごとに最大3回まで試行(`api_retry.py`)。失敗時は受け取った発話だけを記録し、生成は捨てる方針が明示された(`event_dispatcher.py:101-106`)。 |
+| WAIT同士の NoReply の往復が止まらない | 残る | `conversation_continuation.py` は変更なし。 |
+| LLMなしの構成では住人が発言しない | 一部解消 | テストはLLMなし専用の `DirectReplyDecisionGenerator` に差し替えて通るようになった。`RuleBasedDecisionGenerator` 自体は、text_generator がないと今も WAIT を返す。行動選択プロンプトに想起とExpectation Fieldが入らない点も変わらない。 |
+| Recall の計算量が大きい | 残る(悪化) | 文字列一致の方式は同じ。加えて Memory 1件ごとに `recall_search_text` が他者認知を SQLite から読むようになり、同条件で 4.4秒 → 6.6秒。 |
+| TALK競合は生成が先に終わった方が勝つ | 残る | `event_dispatcher.py:287-350` の勝敗の決め方は同じ。 |
+| 容量整理がロックを持ったまま長時間走る | 残る | `memory_capacity_scheduler.py` は変更なし。 |
+| Lossy置換後のMemoryや自分の発話がRecallされない | 残る | 外部発話とRSS記事には recall metadata が付くようになったが、Lossy置換・自分の発話・Thought には付かない。 |
+| OTHER が `"other"` の文字列のまま保存される | 解消 | 候補を `TARGET_n` で提示し、実IDに解決する。OTHER が一意に決まらなければ例外にする(`rule_based_decision_generator.py:106-189`)。 |
+| プロンプトの【現在の出来事】が内部ID表示 | 解消 | `PerceptionRenderer` が観測者ごとの既知名で表示する(`prompt_builder.py:220-234`)。 |
+| 想定外ラベルの扱いが WAIT と例外でそろっていない | 残る | 行動ラベルは WAIT、発言相手ラベルは例外のまま。 |
+| `last_resident_speaker_id` が読まれていない | 残る | `main.py:249, 455-462`。 |
+| `ApiActivityStore` の上書きが一時ファイル経由でない | 残る | `api_activity_store.py` は変更なし。 |
+| 初版で失敗していたテスト14件 | 解消 | 14件すべて通る。新たに2件が失敗(「テストの状況」を参照)。 |
+| `20260822/` によるテスト収集の衝突、requirements 不在 | 残る | ルートで `pytest` を実行すると収集エラー108件。 |
 
 ## アーキテクチャ図
+
+> この節の図と流れは初版(`83e129e`)時点の構造。`5bfd74c` で追加された他者認知(`entity_perception_*`、`PerceptionRenderer`)、外部発話の解釈Memory、RSS読書(`READ_RSS` と読書後の振り返り)、APIの再試行と呼び出し上限(10秒20回)は図に入っていない。
 
 実行時の構造(`main.py` から到達できる57モジュールが対象。実験用コードは含まない)。入口が3つあり、どれも `conversation_execution_lock` で1ターンずつ直列化されてから World層に入る。`[LLM]` は Gemini API を呼ぶ箇所。
 
@@ -96,100 +121,90 @@ flowchart TB
 - **Lossy置換がアトミック。** Representation 関係の一部だけを消すことを禁止し、1トランザクションで挿入・削除してから、DBを正として実行時の状態を読み直している。
 - **プロンプトが誘導しないように書かれている。** 「どれかを優先する必要はありません」「確率、重要度、感情は生成しない」など、LLM に答えを寄せない書き方で統一されている。
 
-## 指摘事項
+## 残っている指摘
 
-重要度: 高=動作が止まる・意図しない挙動が続く、中=性能や設計上のリスク、低=整理すると読みやすくなる。
-
-### 【高】通常の発話でGemini APIが失敗すると、CLI全体が落ちる
-
-`main.py:722-737` · `event_dispatcher.py:79`
-
-- **起きること**: `/pass` と `/observe-memory` は try/except で囲まれているが、通常の発話経路の `dispatcher.dispatch(event)` は囲まれていない。TALK本文の生成失敗だけは Dispatcher 内で握りつぶされるが、Expectation Field・Thought・Decision・記憶要約(JSON解析失敗を含む)で例外が出ると、そのままメインループを抜けてプロセスが終了する。
-- **影響**: 一時的なAPIエラー1回でセッションが終わる。ユーザー発話は WorldState には publish 済みなのに Memory には一部しか保存されない、という中途半端な状態も起こりうる。
-- **提案**: 他のコマンドと同じく try/except で囲み、エラーを表示して入力に戻す。あわせて `GeminiTextGenerator` に短いリトライ(429や5xxに対して2〜3回)を入れる。
+重要度: 高=意図しない挙動が続く、中=性能や設計上のリスク、低=整理すると読みやすくなる。行番号は `5bfd74c` のもの。
 
 ### 【高】お互いにWAITを選び続けると、NoReplyの往復が止まらない
 
 `conversation_continuation.py:86-108`
 
 - **起きること**: AがWAITを選ぶとBに NoReplyEvent が渡り、BもWAITを選ぶと今度はAに NoReplyEvent が渡る。この往復に終了条件がないため、アプリを起動している限り45秒ごとに続く。
-- **影響**: 1往復ごとに Gemini 呼び出しが約3回(Expectation Field・Thought・Decision)、Memory が3件(NoReply・Thought・Decision)増える。1時間放置すると約240回の呼び出しと約240件の Memory になり、容量上限5000件の半分に約10時間で達する計算。
-- **提案**: 「生きている」表現として意図的なら、連続WAIT回数による打ち切りか、間隔を倍々に伸ばす仕組みを入れる。意図していないなら、NoReplyに対するWAITでは継続を作らない。CHECK_TIME の後は待ち時間0秒で継続するので、CHECK_TIME を繰り返し選んだ場合も同様に高速なループになりうる。
+- **影響**: 1往復ごとに Gemini 呼び出しが約3回(Expectation Field・Thought・Decision)、Memory が3件(NoReply・Thought・Decision)増える。1時間放置すると約240回の呼び出しと約240件の Memory になり、容量上限5000件の半分に約10時間で達する計算。新しく入った呼び出し上限(10秒20回)はこの程度の頻度では効かない。
+- **提案**: 「生きている」表現として意図的なら、連続WAIT回数による打ち切りか、間隔を倍々に伸ばす仕組みを入れる。意図していないなら、NoReplyに対するWAITでは継続を作らない。CHECK_TIME の後は待ち時間0秒で継続するので(`conversation_continuation_scheduler.py:55`)、CHECK_TIME を繰り返し選んだ場合も同様に高速なループになりうる。
 
-### 【高】LLMなしの構成では住人が一切発言しなくなっている
+### 【中】Recallの計算量が大きく、5bfd74c でさらに遅くなった
 
-`context_builder.py:91` · `rule_based_decision_generator.py:27, 42`
+`memory_recall_service.py:46-60, 101` · `perception_renderer.py:107-119`
 
-- **起きること**: `ContextBuilder` が常に `available_action_types=(TALK, WAIT, CHECK_TIME)` を設定するようになったため、`RuleBasedDecisionGenerator` は必ず `_choose_available_action` に進む。text_generator がないとそこで必ず WAIT を返すので、`integration_test_runner.py`(LLMを使わない動作確認)では住人が発言しない。`test_integration_test_runner` と `test_living_loop` の失敗はこれが原因。
-- **もう一つの変化**: 同じ理由で `_choose_talk_or_wait` は通常経路から到達できなくなった。以前はこの判断プロンプトに「思い出した経験」と「経験全体から感じられる傾向」が入っていたが、現在の行動選択プロンプトには入っていない。意図した変更かどうか確認したい。
-- **提案**: text_generator がないときは TALK を既定にする(以前の挙動)。行動選択プロンプトに想起とExpectation Fieldを戻すかどうかは、設計として判断する。
+- **起きること**: `_common_text_score` は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ `in` 検索する(おおよそ 入力長² × Memory件数)。`5bfd74c` からは、その前に Memory 1件ごとに `recall_search_text` が他者認知を取りに行き、そのたびに SQLite の接続を開いている。
+- **実測**: Memory 5000件・入力80文字で、`83e129e` は 4.4秒、`5bfd74c` は 6.6秒(`main.py` と同じく renderer ありの構成)。応答する住人ごとに実行され、ロックを持ったまま走るため、その間は他の処理も待たされる。
+- **提案**: 他者認知は Recall 1回につき観測者ごとに1度だけ読んで辞書で引く。文字列一致は Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数で近似する、入力長に上限を設ける、など。
 
-### 【中】Recallの計算量が大きく、Memoryが増えると応答が遅くなる
+### 【中】LLMなしの Decision は今も WAIT になり、行動選択に想起が入らない
 
-`memory_recall_service.py:93-150`
+`context_builder.py:100` · `rule_based_decision_generator.py:29, 44, 263`
 
-- **起きること**: `_common_text_score` は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ `in` 検索する。入力長をL、Memory件数をNとすると、おおよそ L²×N 回の文字列検索。
-- **実測**: Memory 5000件、入力80文字で1回の Recall に **4.4秒**。応答する住人ごとに実行され、しかもロックを持ったまま走るため、その間はユーザー入力も待たされる。住人同士の長い発話が入力になると、さらに伸びる。
-- **提案**: Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数でスコアを近似する、入力長に上限を設ける、recall_keys による絞り込みを先に行う、など。
+- **起きること**: `ContextBuilder` が常に選べる行動を渡すため、`RuleBasedDecisionGenerator` は text_generator がないと必ず WAIT を返す。テストは専用の `DirectReplyDecisionGenerator` に差し替えて通しているので、`RuleBasedDecisionGenerator` のLLMなし経路を確認するテストはなくなった。
+- **もう一つの点**: `_choose_talk_or_wait`(想起とExpectation Fieldを判断プロンプトに入れていた経路)は通常経路から到達できないまま。意図した変更かどうか確認したい。
+- **提案**: 使わないなら `_choose_talk_or_wait` とLLMなしの分岐を削除する。使うなら text_generator がないときの既定を TALK に戻す。
 
 ### 【中】TALKの競合で「生成が先に終わった方」が勝ち、負けた側はそれを知らない
 
-`event_dispatcher.py:291-316`
+`event_dispatcher.py:287-350`
 
-- **起きること**: 2人ともTALKを選んだ場合、`as_completed` の順で最初に返ってきた発話だけが成立する。勝敗はAPIの応答速度で決まる。負けた側の Thought と「発言する」という Decision は Memory に残るが、自分の発言が成立しなかったという観測は残らない。
+- **起きること**: 2人ともTALKを選んだ場合、`as_completed` の順で最初に返ってきた発話だけが成立する。勝敗はAPIの応答速度で決まる。`5bfd74c` の再試行が入ったことで、一方が再試行待ちになると、もう一方がほぼ確実に勝つ。負けた側の Thought と「発言する」という Decision は Memory に残るが、自分の発言が成立しなかったという観測は残らない。
 - **提案**: 勝敗の決め方(宛先を優先する、交互にするなど)を明示的なルールにする。負けた側には「話そうとしたが相手が先に話した」ことが観測として残るようにするか、少なくとも Decision を記録しないようにする。
 
 ### 【中】容量整理のループがロックを持ったまま長時間走ることがある
 
-`memory_capacity_scheduler.py:121-219`
+`memory_capacity_scheduler.py:120-219`
 
-- **起きること**: `_fire_inner` は実行ロックを取ったまま、期限が来た住人を順番に処理する。1人あたり Thought・Decision・置換文・整理後メッセージなど複数回のLLM呼び出しがあるため、その間にユーザーが入力しても何も表示されずに待たされる。
+- **起きること**: `_fire_inner` は実行ロックを取ったまま、期限が来た住人を順番に処理する。1人あたり Thought・Decision・置換文・整理後メッセージなど複数回のLLM呼び出しがあり、`5bfd74c` からは各呼び出しが再試行で通常20秒ほど(429 で Retry-After があれば最大120秒ずつ)待つことがある。外部入力は別スレッドになったので入力欄は固まらないが、応答はロックが空くまで出ない。
 - **提案**: 1回の発火では1人だけ処理して次のタイマーに回す。処理中であることを CLI に一行出す。
 
 ### 【中】Lossy置換後のMemoryや自分の発話は、検索型Recallに一度も出てこない
 
-`memory_recall_service.py:43` · `memory_recorder.py:83`
+`memory_recall_service.py:46` · `memory_recorder.py:161`
 
-- **起きること**: Recall は `recall_text` を持つ Memory だけを対象にするが、recall_text が作られるのは他者の発話だけ。自分の発言・Thought・Lossy置換で残した Memory は、直近10件に入っている間しか思い出せない。
-- **確認したいこと**: 「自分で整理して残したMemoryほど思い出せない」という結果になっているので、設計として意図したものかを確認したい。意図していないなら、Lossy置換時に `MemorySummarizer.summarize_as_single_memory` で recall metadata を付けられる(Representation 用に作られたもので、現在は main.py からは使われていない `memory_representation_metadata_service.py` が呼んでいる)。
+- **起きること**: Recall は `recall_text` を持つ Memory だけを対象にする。`5bfd74c` で外部発話(解釈Memory)とRSS記事にも recall metadata が付くようになったが、自分の発言・Thought・Lossy置換で残した Memory には今も付かず、直近10件に入っている間しか思い出せない。
+- **確認したいこと**: 「自分で整理して残したMemoryほど思い出せない」という結果になっているので、設計として意図したものかを確認したい。意図していないなら、Lossy置換時に `MemorySummarizer.summarize_as_single_memory`(外部発話とRSSで既に使われている)で recall metadata を付けられる。
 
 ### 【低】細かい不整合
 
-- TALKの相手に OTHER を選ぶと `recipient_id="other"` という文字列のまま保存される(`rule_based_decision_generator.py:122`)。住人が2人のうちは困らないが、3人以上になると意味が曖昧になる。
-- 返答プロンプトの【現在の出来事】は `user -> stella: …` のように内部IDで表示される一方、Memory は「ユーザーが…」と表示名で書かれている(`prompt_builder.py:159`)。
-- 行動ラベルが想定外のときは黙って WAIT になるが、発言相手のラベルが想定外のときは例外になる。扱いがそろっていない。
-- `last_resident_speaker_id` は更新されるだけで、どこからも読まれていない(`main.py:190, 296-304`)。
+- 行動ラベルが想定外のときは黙って WAIT になるが、発言相手のラベルが想定外のときは例外になる(`rule_based_decision_generator.py:162`)。扱いがそろっていない。
+- `last_resident_speaker_id` は更新されるだけで、どこからも読まれていない(`main.py:249, 455-462`)。
 - `ApiActivityStore.record_request` は並列TALKの複数スレッドから同じJSONを直接上書きする。他のストアのように一時ファイル経由で置き換えるほうが安全(`api_activity_store.py:20`)。
+
+## 解消した指摘
+
+- **Gemini APIの失敗でCLI全体が落ちる**: 外部入力の処理が `process_external_input`(`main.py:798`)に移り、例外は `[システム]` 表示で止まる。429/503/504 は `ApiRetryPolicy` で段階ごとに最大3回まで試行し(間隔は5秒・15秒)、新しい入力が来たら待機中の再試行を取り消す。失敗時は受け取った発話だけを Memory に残す方針が明示された。
+- **TALKの相手 OTHER が `"other"` のまま保存される**: 発言相手の候補を実IDの一覧として提示するようになった。
+- **プロンプトの【現在の出来事】が内部ID表示**: 観測者ごとの既知名で表示されるようになった。
+- **初版で失敗していたテスト14件**: すべて通る。
 
 ## テストの状況
 
-requirements.txt も pyproject.toml もないため、pytest と google-genai を入れてから実行した。リポジトリのルートで `pytest` をそのまま実行すると、`20260822/` にある同名モジュールのコピーと衝突して、収集の時点で100件のエラーになる。ルート直下の `test_*.py` だけを指定して実行した結果は次のとおり。
+requirements.txt も pyproject.toml もないため、pytest と google-genai を入れてから実行した。ルートで `pytest` をそのまま実行すると、`20260822/` にある同名モジュールのコピーと衝突して、収集の時点で108件のエラーになる(初版時は100件)。ルート直下の `test_*.py` だけを指定した結果は **390件成功・2件失敗**。
 
-| 原因 | 失敗したテスト | 件数 |
-| --- | --- | ---: |
-| LLMなしだとWAITしか選ばない(上の指摘) | test_integration_test_runner, test_living_loop | 2 |
-| テスト用のダミー生成器に `generate_json` がない | test_memory_expectation_recent_model | 5 |
-| テストが `Decision.action_type` に文字列を渡している | test_response_generator | 3 |
-| ダミーの ResponsePolicy が `perception` 引数を受け取らない | test_event_dispatcher | 1 |
-| 削除された `update_recall_text` を呼んでいる | test_memory_repository | 1 |
-| 知覚を通すようになり source_event が同一オブジェクトでなくなった | test_memory_persistence | 1 |
-| 想起Memoryのプロンプト表示形式が変わった | test_prompt_builder | 1 |
+| 失敗したテスト | 原因 |
+| --- | --- |
+| `test_api_request_limiter.py::test_limit_applies_to_all_generators_before_network_request` | `a09c3be` で `GeminiTextGenerator.generate` が上限超過の例外を `RuntimeError` で包むようになったのに、テストは `ApiRequestLimitExceeded` がそのまま出ることを期待している。実行時の表示は原因の連鎖をたどるので問題ない。テストの更新漏れ。 |
+| `test_external_followup.py::test_failed_first_input_is_not_a_followup_after_retry` | 「生成に失敗した外部入力は Memory に残さない」ことを期待している。`a09c3be` で「失敗しても受け取った原文は残す」方針に変わったため、テストが古い方針のままになっている。どちらの方針にするか決めてテストをそろえる必要がある。 |
 
-14件中12件は、本体の変更にテストが追従していないだけ。本当の不具合を示しているのは最初の2件。
+どちらも単独で実行しても失敗するので、実行順による不安定さではない。
 
 ## リポジトリの構成
 
-473個の `.py` ファイルがすべてルートに並んでいて、そのうち実行時に使われるのは57モジュール。残りは実験スクリプト(`*_experiment.py`)、スモークテスト、ユニットテスト、そして main.py から使われていない Knowledge 系・Reflection 系・予測系のモジュール。
+ルート直下の `.py` は301個に増え、`main.py` から使われるのは74モジュール。`main.py` は970行になり、組み立て・グローバル状態・コマンド処理・スケジューラのハンドラ・外部入力スレッドを1ファイルに持っている。`20260822/`(本体のコピー)と `archive/`(実験zip)も git 管理下に残っている。設計メモ(`CURRENT_DESIGN_REVIEW.md`、`RSS_STAGE1〜4.md`)もルートに増えた。
 
-さらに `20260822/` に本体一式のコピー(210ファイル)、`archive/` に実験ごとのzip(約11MB)が git 管理下にある。どれが現行コードかがファイル一覧から分かりにくく、上のようにテスト収集も壊れる。
-
-`main.py`(741行)は、組み立て・グローバル状態(容量整理セッションなど)・コマンド処理・スケジューラのハンドラを1ファイルに持っていて、テストしにくい形になっている。
+`CURRENT_DESIGN_REVIEW.md` には「API エラーの自動再試行は追加していない」とあるが、その後の `a09c3be` で再試行が入っているので、記述が古くなっている。
 
 ## 次にやるとよいこと
 
-1. 通常発話の経路を try/except で囲み、Gemini 呼び出しに短いリトライを入れる(数行で済み、効果が大きい)。
-2. WAIT同士の NoReply の往復に止まる条件を入れる。
-3. LLMなしのときの Decision を TALK に戻し、失敗しているテスト12件を現在のインターフェースに合わせる。`requirements.txt` と、`testpaths` を指定した `pytest.ini` を追加する。
-4. 実行時コード・実験・テスト・スナップショットをディレクトリで分ける。たとえば `living_agent/`(world・cognition・memory・llm)、`experiments/`、`tests/` に分け、`20260822/` と `archive/` は git のタグか外部ストレージに移す。
-5. Recall をn-gram索引で高速化する。Memory が数千件に近づく前にやっておくと安心。
+1. WAIT同士の NoReply の往復に止まる条件を入れる。
+2. Recall で他者認知を1回だけ読むようにする(接続を毎回開くコストがなくなるので、4.4秒 → 6.6秒 の悪化の多くは戻せる見込み)。その後、n-gram索引で文字列一致自体を速くする。
+3. 失敗しているテスト2件を現在の方針に合わせる。`requirements.txt` と、`testpaths` を指定した `pytest.ini` を追加する。
+4. `RuleBasedDecisionGenerator` のLLMなし分岐と `_choose_talk_or_wait` を、使うか削除するか決める。
+5. 実行時コード・実験・テスト・スナップショットをディレクトリで分け、`20260822/` と `archive/` は git のタグか外部ストレージに移す。
 6. TALK競合の勝敗ルールと、Lossy置換後の Memory を思い出せるようにするかどうかを、設計として決める。
