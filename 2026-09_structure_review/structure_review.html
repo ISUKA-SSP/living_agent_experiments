@@ -1,0 +1,480 @@
+<title>Living Agent 構造レビュー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@700&display=swap">
+<style>
+:root{
+  --bg:#F2F4F3;
+  --surface:#FFFFFF;
+  --surface-2:#E7ECEA;
+  --ink:#18211E;
+  --ink-2:#4A5753;
+  --line:#C9D2CF;
+  --accent:#1F6B5A;
+  --accent-soft:#D5E7E1;
+  --llm:#9A5B12;
+  --llm-soft:#F5E6D0;
+  --high:#B03434;
+  --high-soft:#F6DEDC;
+  --mid:#A36A0B;
+  --mid-soft:#F6EACF;
+  --low:#4F6470;
+  --low-soft:#E1E8EC;
+  --ok:#2E7A45;
+  --lock:#E9E2F2;
+  --lock-ink:#5B4A78;
+  --display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --body:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121816;--surface:#1A221F;--surface-2:#222C29;--ink:#E4ECE9;--ink-2:#A2B2AD;--line:#34423E;
+    --accent:#62BFA5;--accent-soft:#1D3A33;--llm:#E0A558;--llm-soft:#3A2C19;
+    --high:#EE7F7F;--high-soft:#3F2222;--mid:#E6B45A;--mid-soft:#3A301A;--low:#A5B8C4;--low-soft:#26313A;
+    --ok:#6FCB8B;--lock:#2A2436;--lock-ink:#C4B4E2;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121816;--surface:#1A221F;--surface-2:#222C29;--ink:#E4ECE9;--ink-2:#A2B2AD;--line:#34423E;
+  --accent:#62BFA5;--accent-soft:#1D3A33;--llm:#E0A558;--llm-soft:#3A2C19;
+  --high:#EE7F7F;--high-soft:#3F2222;--mid:#E6B45A;--mid-soft:#3A301A;--low:#A5B8C4;--low-soft:#26313A;
+  --ok:#6FCB8B;--lock:#2A2436;--lock-ink:#C4B4E2;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.75;padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:48px}
+.prose{max-width:720px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.35;margin:0}
+h1{font-size:32px}
+h2{font-size:22px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h3{font-size:17px;font-family:var(--body);font-weight:700}
+p{margin:0}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--surface-2);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+section{display:flex;flex-direction:column;gap:18px}
+.eyebrow{font-size:12px;letter-spacing:.08em;color:var(--accent);font-weight:700}
+header{display:flex;flex-direction:column;gap:12px}
+.meta{color:var(--ink-2);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 18px}
+.lead{font-size:16px;max-width:720px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.fact{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.fact b{font-family:var(--mono);font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.fact span{font-size:13px;color:var(--ink-2)}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto}
+.diagram svg{display:block;min-width:900px;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--ink-2)}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+svg text{font-family:var(--body);fill:var(--ink)}
+svg .t{font-size:13px;font-weight:700}
+svg .s{font-size:11.5px;fill:var(--ink-2)}
+svg .g{font-size:12px;font-weight:700;fill:var(--accent);letter-spacing:.04em}
+svg .llm{fill:var(--llm);font-weight:700}
+svg .box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+svg .box-llm{fill:var(--surface);stroke:var(--llm);stroke-width:1.4}
+svg .grp{fill:var(--surface-2);stroke:none}
+svg .lockband{fill:var(--lock)}
+svg .locktext{font-size:12px;fill:var(--lock-ink);font-weight:500}
+svg .ext{fill:var(--llm-soft);stroke:var(--llm);stroke-width:1.2}
+svg .ext2{fill:var(--surface);stroke:var(--line);stroke-dasharray:4 3}
+svg .ar{fill:none;stroke:var(--ink-2);stroke-width:1.4;marker-end:url(#arrow)}
+svg .arlabel{font-size:11px;fill:var(--ink-2)}
+svg #arrow path{fill:var(--ink-2)}
+ol.flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;counter-reset:step;max-width:820px}
+ol.flow li{counter-increment:step;display:grid;grid-template-columns:36px 1fr;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+ol.flow li::before{content:counter(step);font-family:var(--mono);font-size:13px;color:var(--accent);border:1px solid var(--accent);border-radius:50%;width:26px;height:26px;display:grid;place-items:center;margin-top:2px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;border-radius:4px;margin-left:6px;vertical-align:1px;letter-spacing:.03em}
+.tag.llm{background:var(--llm-soft);color:var(--llm)}
+.entries{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.entry{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.entry h3{font-size:15px}
+.entry p{font-size:14px;color:var(--ink-2)}
+ul.good{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px;max-width:820px}
+ul.good li::marker{color:var(--ok)}
+.findings{display:flex;flex-direction:column;gap:12px}
+details.f{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--sev);border-radius:6px}
+details.f[data-sev="high"]{--sev:var(--high);--sev-soft:var(--high-soft)}
+details.f[data-sev="mid"]{--sev:var(--mid);--sev-soft:var(--mid-soft)}
+details.f[data-sev="low"]{--sev:var(--low);--sev-soft:var(--low-soft)}
+details.f summary{cursor:pointer;padding:12px 16px;display:flex;gap:10px;align-items:baseline;list-style:none}
+details.f summary::-webkit-details-marker{display:none}
+details.f summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sev{flex:none;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--sev-soft);color:var(--sev)}
+.ftitle{font-weight:700}
+.fbody{padding:0 16px 14px 16px;display:flex;flex-direction:column;gap:8px;font-size:14px;max-width:860px}
+.fbody dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:4px 14px}
+.fbody dt{color:var(--ink-2);font-size:13px}
+.fbody dd{margin:0}
+.where{font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+table{border-collapse:collapse;font-size:14px;width:100%}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--ink-2);font-weight:700;letter-spacing:.04em;background:var(--surface-2)}
+tr:last-child td{border-bottom:none}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;max-width:820px}
+.note{font-size:13px;color:var(--ink-2)}
+@media (max-width:560px){h1{font-size:26px}.fbody dl{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">ISUKA-SSP / LIVING_AGENT · コードレビュー</div>
+  <h1>Living Agent 構造レビュー</h1>
+  <div class="meta">
+    <span>ブランチ <code>claude/modest-hopper-pjj8qg</code></span>
+    <span>コミット <code>83e129e</code>(2026-09-15)</span>
+    <span>確認日 2026-09-25</span>
+  </div>
+  <p class="lead">ステラとシリカの2人の住人(PI)が、ユーザーとの会話・住人同士の会話・自分のMemoryの観測を通じて経験を積むCLIアプリです。世界で起きた事実と、住人それぞれが主観的に受け取った観測をはっきり分ける設計が軸になっています。このページでは、実行時に使われる構造の図と、読んで気づいた問題点をまとめています。</p>
+</header>
+
+<div class="facts">
+  <div class="fact"><b>473</b><span>リポジトリ内の .py ファイル(約5.2万行)</span></div>
+  <div class="fact"><b>57</b><span>main.py から実際に import されるモジュール</span></div>
+  <div class="fact"><b>264 / 14</b><span>ルート直下のテストの成功 / 失敗件数</span></div>
+  <div class="fact"><b>約5〜6回</b><span>ユーザー発話1回あたり、住人1人が呼ぶGemini API</span></div>
+</div>
+
+<section id="architecture">
+  <h2>アーキテクチャ図</h2>
+  <p class="prose">実行時の構造です(main.py から到達できる57モジュールが対象。実験用コードは含みません)。入口が3つあり、どれも同じロックで1ターンずつ直列化されてから World層に入ります。茶色の枠と「LLM」の印は Gemini API を呼ぶ箇所です。</p>
+  <div class="diagram">
+  <svg viewBox="0 0 1120 850" role="img" aria-label="Living Agentの実行時アーキテクチャ図">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+    </defs>
+
+    <!-- lock band -->
+    <rect class="lockband" x="40" y="106" width="1040" height="28" rx="4"/>
+    <text class="locktext" x="578" y="125">conversation_execution_lock で1ターンずつ直列化</text>
+
+    <!-- Row A: entry points -->
+    <rect class="box" x="40" y="20" width="320" height="76" rx="6"/>
+    <text class="t" x="56" y="46">CLI入力ループ</text>
+    <text class="s" x="56" y="66">main.py · input() と /コマンド</text>
+    <text class="s" x="56" y="84">発話の宛先は名前の出現位置で決定</text>
+
+    <rect class="box" x="400" y="20" width="320" height="76" rx="6"/>
+    <text class="t" x="416" y="46">会話継続スケジューラ</text>
+    <text class="s" x="416" y="66">45秒後に相手PIへ応答機会を渡す</text>
+    <text class="s" x="416" y="84">WAIT時は NoReplyEvent を相手へ</text>
+
+    <rect class="box" x="760" y="20" width="320" height="76" rx="6"/>
+    <text class="t" x="776" y="46">Memory容量スケジューラ</text>
+    <text class="s" x="776" y="66">使用率50%以上で整理の機会(15〜60分間隔)</text>
+    <text class="s" x="776" y="84">95%以上は緊急ループで置換を強制</text>
+
+    <!-- Group B: World -->
+    <rect class="grp" x="40" y="150" width="1040" height="140" rx="8"/>
+    <text class="g" x="56" y="172">WORLD層</text>
+
+    <rect class="box" x="60" y="184" width="280" height="90" rx="6"/>
+    <text class="t" x="76" y="208">EventDispatcher</text>
+    <text class="s" x="76" y="228">dispatch / prepare / establish</text>
+    <text class="s" x="76" y="246">TALK競合はスレッドで並列生成</text>
+    <text class="s" x="76" y="264">イベントを WorldState へ publish</text>
+
+    <rect class="box" x="360" y="184" width="260" height="90" rx="6"/>
+    <text class="t" x="376" y="208">知覚と観測の境界</text>
+    <text class="s" x="376" y="228">UtterancePerceptionFactory</text>
+    <text class="s" x="376" y="246">ObservationPolicy</text>
+    <text class="s" x="376" y="264">ResponsePolicy</text>
+
+    <rect class="box" x="640" y="184" width="200" height="90" rx="6"/>
+    <text class="t" x="656" y="208">WorldState</text>
+    <text class="s" x="656" y="228">agents · event_archive</text>
+    <text class="s" x="656" y="246">プロセス内のみ保持</text>
+    <text class="s" x="656" y="264">(再起動で消える)</text>
+
+    <rect class="box" x="860" y="184" width="200" height="90" rx="6"/>
+    <text class="t" x="876" y="208">Memory自己観測</text>
+    <text class="s" x="876" y="228">MemoryObservation</text>
+    <text class="s" x="876" y="246">CognitionService</text>
+    <text class="s" x="876" y="264">→ Dispatcherで成立</text>
+
+    <!-- Group C: cognition -->
+    <rect class="grp" x="40" y="318" width="1040" height="206" rx="8"/>
+    <text class="g" x="56" y="340">住人ごとの認知パイプライン · AGENTCONTROLLER(ステラ / シリカ)</text>
+
+    <rect class="box-llm" x="60" y="356" width="260" height="150" rx="6"/>
+    <text class="t" x="76" y="380">ContextBuilder</text>
+    <text class="s" x="76" y="402">① Recall(文字列一致・LLMなし)</text>
+    <text class="s" x="76" y="422">② Representation元経験の展開</text>
+    <text class="s" x="76" y="442">③ Expectation Field <tspan class="llm">LLM</tspan></text>
+    <text class="s" x="76" y="468">→ AgentContext</text>
+    <text class="s" x="76" y="486">(TALK / WAIT / CHECK_TIME を提示)</text>
+
+    <rect class="box-llm" x="350" y="356" width="190" height="150" rx="6"/>
+    <text class="t" x="366" y="380">ThinkGenerator</text>
+    <text class="s" x="366" y="402">今生じている考え</text>
+    <text class="s" x="366" y="422">→ Thought <tspan class="llm">LLM</tspan></text>
+
+    <rect class="box-llm" x="570" y="356" width="230" height="150" rx="6"/>
+    <text class="t" x="586" y="380">DecisionGenerator</text>
+    <text class="s" x="586" y="402">行動ラベルを1つ選ぶ <tspan class="llm">LLM</tspan></text>
+    <text class="s" x="586" y="422">TALKなら相手を選ぶ <tspan class="llm">LLM</tspan></text>
+    <text class="s" x="586" y="442">USER / OTHER / SELF / 指定なし</text>
+    <text class="s" x="586" y="468">自己観測時は</text>
+    <text class="s" x="586" y="486">REPRESENT / LOSSY も選べる</text>
+
+    <rect class="box-llm" x="830" y="356" width="230" height="150" rx="6"/>
+    <text class="t" x="846" y="380">ActionExecutor</text>
+    <text class="s" x="846" y="402">TALK → 発話生成 <tspan class="llm">LLM</tspan></text>
+    <text class="s" x="846" y="422">CHECK_TIME → 時刻観測</text>
+    <text class="s" x="846" y="442">MOVE → 位置を変更</text>
+    <text class="s" x="846" y="468">REPRESENT / LOSSY →</text>
+    <text class="s" x="846" y="486">Memory層のServiceへ</text>
+
+    <!-- Group D: memory -->
+    <rect class="grp" x="40" y="552" width="1040" height="170" rx="8"/>
+    <text class="g" x="56" y="574">MEMORY層</text>
+
+    <rect class="box-llm" x="60" y="588" width="240" height="112" rx="6"/>
+    <text class="t" x="76" y="612">MemoryRecorder</text>
+    <text class="s" x="76" y="634">観測者ごとに Observation 化</text>
+    <text class="s" x="76" y="654">他者の発話だけ要約 <tspan class="llm">LLM</tspan></text>
+    <text class="s" x="76" y="674">recall_text / recall_keys</text>
+
+    <rect class="box" x="320" y="588" width="230" height="112" rx="6"/>
+    <text class="t" x="336" y="612">MemoryManager</text>
+    <text class="s" x="336" y="634">全Memoryをリストで保持</text>
+    <text class="t" x="336" y="662">MemoryAccessState</text>
+    <text class="s" x="336" y="682">Recall可否・Representation関係</text>
+
+    <rect class="box" x="570" y="588" width="230" height="112" rx="6"/>
+    <text class="t" x="586" y="612">MemoryRepository</text>
+    <text class="s" x="586" y="634">SQLite memory.db</text>
+    <text class="s" x="586" y="654">memories + members表</text>
+    <text class="s" x="586" y="674">容量整理の履歴テーブル</text>
+
+    <rect class="box-llm" x="820" y="588" width="240" height="112" rx="6"/>
+    <text class="t" x="836" y="612">Representation / Lossy置換</text>
+    <text class="s" x="836" y="634">1トランザクションで置換</text>
+    <text class="s" x="836" y="654">成立後にDBから全件再読込</text>
+    <text class="s" x="836" y="674">整理後メッセージ <tspan class="llm">LLM</tspan></text>
+
+    <!-- Row E: external -->
+    <rect class="ext" x="40" y="756" width="620" height="76" rx="6"/>
+    <text class="t" x="56" y="782">Gemini API(既定 gemini-2.5-flash)</text>
+    <text class="s" x="56" y="802">LLM の印がある箇所から呼ばれる。リトライなし、タイムアウト60秒。</text>
+    <text class="s" x="56" y="820">GeminiTextGenerator は用途ごとに6インスタンス生成</text>
+
+    <rect class="ext2" x="680" y="756" width="400" height="76" rx="6"/>
+    <text class="t" x="696" y="782">runtime_state/(JSONファイル)</text>
+    <text class="s" x="696" y="802">直近TALKのプロンプト · API利用時刻</text>
+    <text class="s" x="696" y="820">別プロセスからの activity / attention</text>
+
+    <!-- arrows -->
+    <path class="ar" d="M200 96 V182"/>
+    <path class="ar" d="M560 96 V142 H300 V182"/>
+    <path class="ar" d="M920 96 V182"/>
+    <path class="ar" d="M340 229 H358"/>
+    <path class="ar" d="M200 274 V354"/>
+    <text class="arlabel" x="208" y="318">prepare</text>
+    <path class="ar" d="M320 431 H348"/>
+    <path class="ar" d="M540 431 H568"/>
+    <path class="ar" d="M800 431 H828"/>
+    <path class="ar" d="M60 250 H26 V644 H58"/>
+    <text class="arlabel" transform="translate(21 470) rotate(-90)" text-anchor="middle">イベントを記録</text>
+    <path class="ar" d="M280 506 V540 H435 V586"/>
+    <text class="arlabel" x="290" y="534">Recallは全件走査</text>
+    <path class="ar" d="M300 644 H318"/>
+    <path class="ar" d="M180 700 V712 H685 V702"/>
+    <text class="arlabel" x="400" y="716">save</text>
+    <path class="ar" d="M945 506 V586"/>
+    <path class="ar" d="M820 644 H802"/>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--surface);border:1px solid var(--line)"></i>通常のコンポーネント</span>
+    <span><i style="background:var(--surface);border:1.5px solid var(--llm)"></i>Gemini API を呼ぶコンポーネント</span>
+    <span><i style="background:var(--lock)"></i>直列化用のロック</span>
+    <span><i style="background:var(--surface-2)"></i>層のまとまり</span>
+  </div>
+</section>
+
+<section id="flow">
+  <h2>ユーザー発話1回の流れ</h2>
+  <p class="prose">「ステラ、今どうしてる?」と入力したときに実際に通る順番です。宛先が指定されていても、ステラが「集中している」状態でない限り、シリカにも発話は聞こえています。</p>
+  <ol class="flow">
+    <li><div><code>main.py</code> が発話中の名前から宛先を決め、<code>UtteranceEvent(speaker=user)</code> を作ってロック内で <code>dispatcher.dispatch()</code> を呼ぶ。</div></li>
+    <li><div>Dispatcher がイベントを WorldState に publish。住人ごとに <code>ObservationPolicy</code>(同じ場所か)→ <code>UtterancePerceptionFactory</code>(集中中なら名前以降だけ聞こえる)→ <code>ResponsePolicy</code>(応答機会があるか)を順に判定。</div></li>
+    <li><div>応答する住人ごとに <code>ContextBuilder</code> が Recall(Memory全件への文字列一致スコア)→ Representation元経験の展開 → Expectation Field 生成<span class="tag llm">LLM</span>。</div></li>
+    <li><div><code>GeminiThinkGenerator</code> が Thought を生成<span class="tag llm">LLM</span>。</div></li>
+    <li><div><code>RuleBasedDecisionGenerator</code> が「キッチンへ行って」「少し待って」だけは規則で処理し、それ以外は TALK / WAIT / CHECK_TIME から1つ選ばせる<span class="tag llm">LLM</span>。TALKなら発言相手も選ばせる<span class="tag llm">LLM</span>。</div></li>
+    <li><div>TALKの住人が複数いれば並列に発話を生成<span class="tag llm">LLM</span>し、先に生成が終わった1人の発話だけを World に成立させる。</div></li>
+    <li><div><code>MemoryRecorder</code> がターン内の全イベントを観測者ごとに Memory 化し、SQLite に保存。他者の発話は要約してから保存<span class="tag llm">LLM</span>。</div></li>
+    <li><div>成立したTALKのプロンプトを <code>runtime_state/*_last_talk.json</code> に保存し、CLIに表示。45秒後に相手PIへ応答機会を渡す継続をスケジュール。</div></li>
+  </ol>
+</section>
+
+<section id="entries">
+  <h2>3つの入口</h2>
+  <div class="entries">
+    <div class="entry"><h3>CLI入力</h3><p>通常の発話のほかに <code>/pass</code>(直前の住人発言を相手に渡す)、<code>/observe-memory</code>(Memoryを見る機会)、<code>/status</code>、<code>/memory</code>、<code>/debug</code>。</p></div>
+    <div class="entry"><h3>会話継続</h3><p>住人が発言したら、聞いていた相手に45秒後に応答機会を渡す。WAITを選ぶと相手に「返答が届かなかった」という観測が渡る。CHECK_TIMEの後は待ち時間なしで続く。</p></div>
+    <div class="entry"><h3>Memory容量</h3><p>上限5000件に対する使用率で間隔が変わる(50%で60分、90%で15分)。95%を超えると、90%を下回るまで Lossy置換だけを選ばせるループに入る。</p></div>
+  </div>
+</section>
+
+<section id="strengths">
+  <h2>良いところ</h2>
+  <ul class="good">
+    <li><b>世界の事実と主観の分離が一貫している。</b>WorldEvent は事実、Observation は観測者ごとの記述で、誰が何を見られるかは <code>ObservationPolicy</code> の1か所に集まっています。Thought や Decision が本人にしか見えない点も明確です。</li>
+    <li><b>知覚のモデルが丁寧。</b>集中中は自分の名前が出たところから後だけ聞こえる、PIが選んだ発言相手は周囲に開示しない、など「聞こえ方」を <code>UtterancePerception</code> として独立させています。</li>
+    <li><b>ユーザー入力との競合処理がよく考えられている。</b>継続処理は Thought/Decision の生成と World への成立を分け、世代番号で失効を検出しています。副作用のある MOVE だけ先に確定する区別もあります。</li>
+    <li><b>Lossy置換がアトミック。</b>Representation 関係の一部だけを消すことを禁止し、1トランザクションで挿入・削除してから、DBを正として実行時の状態を読み直しています。</li>
+    <li><b>プロンプトが誘導しないように書かれている。</b>「どれかを優先する必要はありません」「確率、重要度、感情は生成しない」など、LLM に答えを寄せない書き方で統一されています。</li>
+    <li><b>実験記録の姿勢。</b><code>experiments/README.md</code> の「一度だけ起きたことは一度だけとして書く」という方針は、この種の研究コードで大事な規律です。</li>
+  </ul>
+</section>
+
+<section id="findings">
+  <h2>指摘事項</h2>
+  <p class="prose note">重要度の目安は、高=動作が止まる・意図しない挙動が続く、中=性能や設計上のリスク、低=整理すると読みやすくなる、です。項目を開くと詳細が見られます。</p>
+  <div class="findings">
+
+    <details class="f" data-sev="high" open>
+      <summary><span class="sev">高</span><span class="ftitle">通常の発話でGemini APIが失敗すると、CLI全体が落ちる</span></summary>
+      <div class="fbody">
+        <div class="where">main.py:722-737 · event_dispatcher.py:79</div>
+        <dl>
+          <dt>起きること</dt><dd><code>/pass</code> と <code>/observe-memory</code> は try/except で囲まれていますが、通常の発話経路の <code>dispatcher.dispatch(event)</code> は囲まれていません。TALK本文の生成失敗だけは Dispatcher 内で握りつぶされますが、Expectation Field・Thought・Decision・記憶要約(JSON解析失敗を含む)で例外が出ると、そのままメインループを抜けてプロセスが終了します。</dd>
+          <dt>影響</dt><dd>一時的なAPIエラー1回でセッションが終わる。ユーザー発話は WorldState には publish 済みなのに Memory には一部しか保存されない、という中途半端な状態も起こりえます。</dd>
+          <dt>提案</dt><dd>他のコマンドと同じく try/except で囲み、エラーを表示して入力に戻す。あわせて <code>GeminiTextGenerator</code> に短いリトライ(429や5xxに対して2〜3回)を入れる。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="high" open>
+      <summary><span class="sev">高</span><span class="ftitle">お互いにWAITを選び続けると、NoReplyの往復が止まらない</span></summary>
+      <div class="fbody">
+        <div class="where">conversation_continuation.py:86-108</div>
+        <dl>
+          <dt>起きること</dt><dd>AがWAITを選ぶとBに NoReplyEvent が渡り、BもWAITを選ぶと今度はAに NoReplyEvent が渡ります。この往復に終了条件がないため、アプリを起動している限り45秒ごとに続きます。</dd>
+          <dt>影響</dt><dd>1往復ごとに Gemini 呼び出しが約3回(Expectation Field・Thought・Decision)、Memory が3件(NoReply・Thought・Decision)増えます。1時間放置すると約240回の呼び出しと約240件の Memory になり、容量上限5000件の半分に約10時間で達する計算です。</dd>
+          <dt>提案</dt><dd>「生きている」表現として意図的なら、連続WAIT回数による打ち切りか、間隔を倍々に伸ばす仕組みを入れる。意図していないなら、NoReplyに対するWAITでは継続を作らない。CHECK_TIME の後は待ち時間0秒で継続するので、CHECK_TIME を繰り返し選んだ場合も同様に高速なループになりえます。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="high">
+      <summary><span class="sev">高</span><span class="ftitle">LLMなしの構成では住人が一切発言しなくなっている</span></summary>
+      <div class="fbody">
+        <div class="where">context_builder.py:91 · rule_based_decision_generator.py:27, 42</div>
+        <dl>
+          <dt>起きること</dt><dd><code>ContextBuilder</code> が常に <code>available_action_types=(TALK, WAIT, CHECK_TIME)</code> を設定するようになったため、<code>RuleBasedDecisionGenerator</code> は必ず <code>_choose_available_action</code> に進みます。text_generator がないとそこで必ず WAIT を返すので、<code>integration_test_runner.py</code>(LLMを使わない動作確認)では住人が発言しません。<code>test_integration_test_runner</code> と <code>test_living_loop</code> の失敗はこれが原因です。</dd>
+          <dt>もう一つの変化</dt><dd>同じ理由で <code>_choose_talk_or_wait</code> は通常経路から到達できなくなりました。以前はこの判断プロンプトに「思い出した経験」と「経験全体から感じられる傾向」が入っていましたが、現在の行動選択プロンプトには入っていません。意図した変更かどうか確認したいところです。</dd>
+          <dt>提案</dt><dd>text_generator がないときは TALK を既定にする(以前の挙動)。行動選択プロンプトに想起とExpectation Fieldを戻すかどうかは、設計として判断する。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="mid">
+      <summary><span class="sev">中</span><span class="ftitle">Recallの計算量が大きく、Memoryが増えると応答が遅くなる</span></summary>
+      <div class="fbody">
+        <div class="where">memory_recall_service.py:93-150</div>
+        <dl>
+          <dt>起きること</dt><dd><code>_common_text_score</code> は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ <code>in</code> 検索します。入力長をL、Memory件数をNとすると、おおよそ L²×N 回の文字列検索です。</dd>
+          <dt>実測</dt><dd>Memory 5000件、入力80文字で1回の Recall に <b>4.4秒</b>かかりました。応答する住人ごとに実行され、しかもロックを持ったまま走るため、その間はユーザー入力も待たされます。住人同士の長い発話が入力になると、さらに伸びます。</dd>
+          <dt>提案</dt><dd>Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数でスコアを近似する、入力長に上限を設ける、recall_keys による絞り込みを先に行う、などで大きく短縮できます。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="mid">
+      <summary><span class="sev">中</span><span class="ftitle">TALKの競合で「生成が先に終わった方」が勝ち、負けた側はそれを知らない</span></summary>
+      <div class="fbody">
+        <div class="where">event_dispatcher.py:291-316</div>
+        <dl>
+          <dt>起きること</dt><dd>2人ともTALKを選んだ場合、<code>as_completed</code> の順で最初に返ってきた発話だけが成立します。勝敗はAPIの応答速度で決まります。負けた側の Thought と「発言する」という Decision は Memory に残りますが、自分の発言が成立しなかったという観測は残りません。</dd>
+          <dt>提案</dt><dd>勝敗の決め方(宛先を優先する、交互にするなど)を明示的なルールにする。負けた側には「話そうとしたが相手が先に話した」ことが観測として残るようにするか、少なくとも Decision を記録しないようにする。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="mid">
+      <summary><span class="sev">中</span><span class="ftitle">容量整理のループがロックを持ったまま長時間走ることがある</span></summary>
+      <div class="fbody">
+        <div class="where">memory_capacity_scheduler.py:121-219</div>
+        <dl>
+          <dt>起きること</dt><dd><code>_fire_inner</code> は実行ロックを取ったまま、期限が来た住人を順番に処理します。1人あたり Thought・Decision・置換文・整理後メッセージなど複数回のLLM呼び出しがあるため、その間にユーザーが入力しても何も表示されずに待たされます。</dd>
+          <dt>提案</dt><dd>1回の発火では1人だけ処理して次のタイマーに回す。処理中であることを CLI に一行出す。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="mid">
+      <summary><span class="sev">中</span><span class="ftitle">Lossy置換後のMemoryや自分の発話は、検索型Recallに一度も出てこない</span></summary>
+      <div class="fbody">
+        <div class="where">memory_recall_service.py:43 · memory_recorder.py:83</div>
+        <dl>
+          <dt>起きること</dt><dd>Recall は <code>recall_text</code> を持つ Memory だけを対象にしますが、recall_text が作られるのは他者の発話だけです。自分の発言・Thought・Lossy置換で残した Memory は、直近10件に入っている間しか思い出せません。</dd>
+          <dt>確認したいこと</dt><dd>「自分で整理して残したMemoryほど思い出せない」という結果になっているので、設計として意図したものかを確認したいです。意図していないなら、Lossy置換時に <code>MemorySummarizer.summarize_as_single_memory</code> で recall metadata を付けられます(Representation 用に作られたもので、現在は main.py からは使われていない <code>memory_representation_metadata_service.py</code> が呼んでいます)。</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="f" data-sev="low">
+      <summary><span class="sev">低</span><span class="ftitle">細かい不整合</span></summary>
+      <div class="fbody">
+        <ul class="good">
+          <li>TALKの相手に OTHER を選ぶと <code>recipient_id="other"</code> という文字列のまま保存される(<span class="where">rule_based_decision_generator.py:122</span>)。住人が2人のうちは困らないが、3人以上になると意味が曖昧になる。</li>
+          <li>返答プロンプトの【現在の出来事】は <code>user -&gt; stella: …</code> のように内部IDで表示される一方、Memory は「ユーザーが…」と表示名で書かれている(<span class="where">prompt_builder.py:159</span>)。</li>
+          <li>行動ラベルが想定外のときは黙って WAIT になるが、発言相手のラベルが想定外のときは例外になる。扱いがそろっていない。</li>
+          <li><code>last_resident_speaker_id</code> は更新されるだけで、どこからも読まれていない(<span class="where">main.py:190, 296-304</span>)。</li>
+          <li><code>ApiActivityStore.record_request</code> は並列TALKの複数スレッドから同じJSONを直接上書きする。他のストアのように一時ファイル経由で置き換えるほうが安全(<span class="where">api_activity_store.py:20</span>)。</li>
+        </ul>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<section id="tests">
+  <h2>テストの状況</h2>
+  <p class="prose">requirements.txt も pyproject.toml もないため、pytest と google-genai を入れてから実行しました。リポジトリのルートで <code>pytest</code> をそのまま実行すると、<code>20260822/</code> にある同名モジュールのコピーと衝突して、収集の時点で100件のエラーになります。ルート直下の <code>test_*.py</code> だけを指定して実行した結果は次のとおりです。</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>原因</th><th>失敗したテスト</th><th>件数</th></tr></thead>
+    <tbody>
+      <tr><td>LLMなしだとWAITしか選ばない(上の指摘)</td><td>test_integration_test_runner, test_living_loop</td><td class="n">2</td></tr>
+      <tr><td>テスト用のダミー生成器に <code>generate_json</code> がない</td><td>test_memory_expectation_recent_model</td><td class="n">5</td></tr>
+      <tr><td>テストが <code>Decision.action_type</code> に文字列を渡している</td><td>test_response_generator</td><td class="n">3</td></tr>
+      <tr><td>ダミーの ResponsePolicy が <code>perception</code> 引数を受け取らない</td><td>test_event_dispatcher</td><td class="n">1</td></tr>
+      <tr><td>削除された <code>update_recall_text</code> を呼んでいる</td><td>test_memory_repository</td><td class="n">1</td></tr>
+      <tr><td>知覚を通すようになり source_event が同一オブジェクトでなくなった</td><td>test_memory_persistence</td><td class="n">1</td></tr>
+      <tr><td>想起Memoryのプロンプト表示形式が変わった</td><td>test_prompt_builder</td><td class="n">1</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose note">14件中12件は、本体の変更にテストが追従していないだけです。本当の不具合を示しているのは最初の2件です。</p>
+</section>
+
+<section id="structure">
+  <h2>リポジトリの構成</h2>
+  <div class="prose" style="display:flex;flex-direction:column;gap:12px">
+    <p>473個の .py ファイルがすべてルートに並んでいて、そのうち実行時に使われるのは57モジュールです。残りは実験スクリプト(<code>*_experiment.py</code>)、スモークテスト、ユニットテスト、そして main.py から使われていない Knowledge 系・Reflection 系・予測系のモジュールです。</p>
+    <p>さらに <code>20260822/</code> に本体一式のコピー(210ファイル)、<code>archive/</code> に実験ごとのzip(約11MB)が git 管理下にあります。どれが現行コードかがファイル一覧から分かりにくく、上のようにテスト収集も壊れます。</p>
+    <p><code>main.py</code>(741行)は、組み立て・グローバル状態(容量整理セッションなど)・コマンド処理・スケジューラのハンドラを1ファイルに持っていて、テストしにくい形になっています。</p>
+  </div>
+</section>
+
+<section id="next">
+  <h2>次にやるとよいこと</h2>
+  <ol class="next">
+    <li>通常発話の経路を try/except で囲み、Gemini 呼び出しに短いリトライを入れる(数行で済み、効果が大きい)。</li>
+    <li>WAIT同士の NoReply の往復に止まる条件を入れる。</li>
+    <li>LLMなしのときの Decision を TALK に戻し、失敗しているテスト12件を現在のインターフェースに合わせる。<code>requirements.txt</code> と、<code>testpaths</code> を指定した <code>pytest.ini</code> を追加する。</li>
+    <li>実行時コード・実験・テスト・スナップショットをディレクトリで分ける。たとえば <code>living_agent/</code>(world・cognition・memory・llm)、<code>experiments/</code>、<code>tests/</code> に分け、<code>20260822/</code> と <code>archive/</code> は git のタグか外部ストレージに移す。</li>
+    <li>Recall をn-gram索引で高速化する。Memory が数千件に近づく前にやっておくと安心です。</li>
+    <li>TALK競合の勝敗ルールと、Lossy置換後の Memory を思い出せるようにするかどうかを、設計として決める。</li>
+  </ol>
+</section>
+
+</div>

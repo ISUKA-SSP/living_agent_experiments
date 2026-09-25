@@ -25,3 +25,7 @@ Living Agent本体のコードは、現時点ではこのリポジトリには�
 ## Experiments
 
 - [2026-09 Memory self-observation](./2026-09_memory_self_observation/README.md)
+
+## Reviews
+
+- [2026-09 Living Agent 構造レビュー](./2026-09_structure_review/README.md)
