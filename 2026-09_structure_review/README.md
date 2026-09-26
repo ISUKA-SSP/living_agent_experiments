@@ -24,7 +24,7 @@
 | Gemini APIの失敗でCLI全体が落ちる | 解消 | 外部入力は別スレッドの `process_external_input` で処理され、例外は `[システム]` 表示で止まる(`main.py:798-815`)。429/503/504 は段階ごとに最大3回まで試行(`api_retry.py`)。失敗時は受け取った発話だけを記録し、生成は捨てる方針が明示された(`event_dispatcher.py:101-106`)。 |
 | WAIT同士の NoReply の往復が止まらない | 残る | `conversation_continuation.py` は変更なし。 |
 | LLMなしの構成では住人が発言しない | 一部解消 | テストはLLMなし専用の `DirectReplyDecisionGenerator` に差し替えて通るようになった。`RuleBasedDecisionGenerator` 自体は、text_generator がないと今も WAIT を返す。行動選択プロンプトに想起とExpectation Fieldが入らない点も変わらない。 |
-| Recall の計算量が大きい | 残る(悪化) | 文字列一致の方式は同じ。加えて Memory 1件ごとに `recall_search_text` が他者認知を SQLite から読むようになり、同条件で 4.4秒 → 6.6秒。 |
+| Recall の計算量が大きい | 残る(悪化) | 同条件で 4.4秒 → 6.6秒。後日の実データ計測では、悪化の主因は検索対象に原文が加わって長くなったこと。他者認知の SQLite 読み込みもあるが寄与は小さい。 |
 | TALK競合は生成が先に終わった方が勝つ | 残る | `event_dispatcher.py:287-350` の勝敗の決め方は同じ。 |
 | 容量整理がロックを持ったまま長時間走る | 残る | `memory_capacity_scheduler.py` は変更なし。 |
 | Lossy置換後のMemoryや自分の発話がRecallされない | 残る | 外部発話とRSS記事には recall metadata が付くようになったが、Lossy置換・自分の発話・Thought には付かない。 |
@@ -139,7 +139,8 @@ flowchart TB
 
 - **起きること**: `_common_text_score` は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ `in` 検索する(おおよそ 入力長² × Memory件数)。`5bfd74c` からは、その前に Memory 1件ごとに `recall_search_text` が他者認知を取りに行き、そのたびに SQLite の接続を開いている。
 - **実測**: Memory 5000件・入力80文字で、`83e129e` は 4.4秒、`5bfd74c` は 6.6秒(`main.py` と同じく renderer ありの構成)。応答する住人ごとに実行され、ロックを持ったまま走るため、その間は他の処理も待たされる。
-- **提案**: 他者認知は Recall 1回につき観測者ごとに1度だけ読んで辞書で引く。文字列一致は Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数で近似する、入力長に上限を設ける、など。
+- **訂正（2026-09-27）**: 後日の実データ計測（Memory 5000件・入力213文字）では、現行15.56秒、他者認知をキャッシュして14.47秒、rendererなしで11.34秒。プロファイル上は `_common_text_score` が約98%、他者認知のSQLite読み込みが約2%。検索対象が平均45文字から原文を含む231文字に伸びたことが、5bfd74cでの悪化の主因だった。この段落の80文字の旧計測は当時の観測値として残す。詳細は [Recall計測と検索対象の議論](../2026-09_design_dialogue/2026-09-26_recall_source_text.md)を参照。元の計測資料は `recall_bottleneck_5bfd74c.md`。
+- **提案（更新）**: 想起結果を変えないスコア計算の高速化（案A）を先に検討し、他者認知をRecall 1回につき一度だけ読む（案B）。原文を検索対象から外す方向は結果そのものを変えるため、別の設計判断として扱う。単純な3-gram得点への置き換えや入力の切り詰めも結果が変わるので、速度改善と混ぜない。
 
 ### 【中】LLMなしの Decision は今も WAIT になり、行動選択に想起が入らない
 
@@ -203,7 +204,7 @@ requirements.txt も pyproject.toml もないため、pytest と google-genai �
 ## 次にやるとよいこと
 
 1. WAIT同士の NoReply の往復に止まる条件を入れる。
-2. Recall で他者認知を1回だけ読むようにする(接続を毎回開くコストがなくなるので、4.4秒 → 6.6秒 の悪化の多くは戻せる見込み)。その後、n-gram索引で文字列一致自体を速くする。
+2. Recall のスコア計算を同じ想起結果のまま高速化する案Aと、他者認知の一括読み出し案Bを検討する。SQLite接続の削減だけでは悪化の多くは戻らない。検索対象から原文を外す案は想起結果を変えるので、設計判断を分ける。
 3. 失敗しているテスト2件を現在の方針に合わせる。`requirements.txt` と、`testpaths` を指定した `pytest.ini` を追加する。
 4. `RuleBasedDecisionGenerator` のLLMなし分岐と `_choose_talk_or_wait` を、使うか削除するか決める。
 5. 実行時コード・実験・テスト・スナップショットをディレクトリで分け、`20260822/` と `archive/` は git のタグか外部ストレージに移す。
