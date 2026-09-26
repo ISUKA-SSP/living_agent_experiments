@@ -156,7 +156,7 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
       <tr><td>Gemini APIの失敗でCLI全体が落ちる</td><td><span class="st done">解消</span></td><td>外部入力は別スレッドの <code>process_external_input</code> で処理され、例外は [システム] 表示で止まる(main.py:798-815)。429/503/504 は段階ごとに最大3回まで試行。失敗時は受け取った発話だけを記録し、生成は捨てる方針が明示された。</td></tr>
       <tr><td>WAIT同士の NoReply の往復が止まらない</td><td><span class="st open">残る</span></td><td><code>conversation_continuation.py</code> は変更なし。</td></tr>
       <tr><td>LLMなしの構成では住人が発言しない</td><td><span class="st part">一部解消</span></td><td>テストは専用の <code>DirectReplyDecisionGenerator</code> に差し替えて通るようになった。<code>RuleBasedDecisionGenerator</code> 自体は今も WAIT を返す。行動選択プロンプトに想起が入らない点も同じ。</td></tr>
-      <tr><td>Recall の計算量が大きい</td><td><span class="st worse">残る(悪化)</span></td><td>方式は同じ。Memory 1件ごとに他者認知を SQLite から読むようになり、4.4秒 → 6.6秒。</td></tr>
+      <tr><td>Recall の計算量が大きい</td><td><span class="st worse">残る(悪化)</span></td><td>同条件で4.4秒 → 6.6秒。後日の実データ計測では、悪化の主因は原文の追加で検索対象が長くなったこと。SQLite読み込みの寄与は小さい。</td></tr>
       <tr><td>TALK競合は生成が先に終わった方が勝つ</td><td><span class="st open">残る</span></td><td>勝敗の決め方は同じ(event_dispatcher.py:287-350)。</td></tr>
       <tr><td>容量整理がロックを持ったまま長時間走る</td><td><span class="st open">残る</span></td><td><code>memory_capacity_scheduler.py</code> は変更なし。</td></tr>
       <tr><td>Lossy置換後のMemoryや自分の発話がRecallされない</td><td><span class="st open">残る</span></td><td>外部発話とRSS記事には recall metadata が付くようになったが、Lossy置換・自分の発話・Thought には付かない。</td></tr>
@@ -391,7 +391,8 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
         <dl>
           <dt>起きること</dt><dd><code>_common_text_score</code> は入力文のすべての部分文字列(長さ3以上)について、Memory 1件ずつ <code>in</code> 検索します(おおよそ 入力長² × Memory件数)。5bfd74c からは、その前に Memory 1件ごとに <code>recall_search_text</code> が他者認知を取りに行き、そのたびに SQLite の接続を開いています。</dd>
           <dt>実測</dt><dd>Memory 5000件・入力80文字で、83e129e は <b>4.4秒</b>、5bfd74c は <b>6.6秒</b>(main.py と同じく renderer ありの構成)。応答する住人ごとに実行され、ロックを持ったまま走るため、その間は他の処理も待たされます。</dd>
-          <dt>提案</dt><dd>他者認知は Recall 1回につき観測者ごとに1度だけ読んで辞書で引く。文字列一致は Memory ごとに文字3-gramの集合を事前計算して共通 n-gram 数で近似する、入力長に上限を設ける、など。</dd>
+          <dt>訂正（2026-09-27）</dt><dd>後日の実データ計測（Memory 5000件・入力213文字）では、現行15.56秒、他者認知をキャッシュして14.47秒、rendererなしで11.34秒。プロファイルではスコア計算が約98%、SQLite読み込みは約2%。検索対象が平均45文字から原文を含む231文字に伸びたことが悪化の主因です。上の80文字の値は当時の計測値として残します。<a href="../2026-09_design_dialogue/2026-09-26_recall_source_text.md">Recall検索対象の議事録</a>も参照。</dd>
+          <dt>提案（更新）</dt><dd>想起結果を変えないスコア計算の高速化（案A）と他者認知の一括読み出し（案B）を検討します。単純な3-gram得点への置換や入力の切り詰めは結果を変えます。原文を検索対象から外す案も設計判断として分けます。</dd>
         </dl>
       </div>
     </details>
@@ -492,7 +493,7 @@ ol.next{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px;
   <h2>次にやるとよいこと</h2>
   <ol class="next">
     <li>WAIT同士の NoReply の往復に止まる条件を入れる。</li>
-    <li>Recall で他者認知を1回だけ読むようにする(接続を毎回開くコストがなくなるので、4.4秒 → 6.6秒 の悪化の多くは戻せる見込み)。その後、n-gram索引で文字列一致自体を速くする。</li>
+    <li>Recallのスコア計算を同じ想起結果のまま高速化する案Aと、他者認知の一括読み出し案Bを検討する。SQLiteの削減だけでは悪化の多くは戻らない。原文を検索対象から外す案は想起結果を変える設計判断として分ける。</li>
     <li>失敗しているテスト2件を現在の方針に合わせる。<code>requirements.txt</code> と、<code>testpaths</code> を指定した <code>pytest.ini</code> を追加する。</li>
     <li><code>RuleBasedDecisionGenerator</code> のLLMなし分岐と <code>_choose_talk_or_wait</code> を、使うか削除するか決める。</li>
     <li>実行時コード・実験・テスト・スナップショットをディレクトリで分け、<code>20260822/</code> と <code>archive/</code> は git のタグか外部ストレージに移す。</li>
